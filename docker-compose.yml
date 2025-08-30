@@ -1,0 +1,8 @@
+services:
+  receipt_manager:
+    build: .
+    ports:
+      - "8000:5000"
+    # volumes:
+      # - .:/receipt_manager
+    # working_dir: /receipt_manager
