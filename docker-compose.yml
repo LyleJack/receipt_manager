@@ -1,8 +1,13 @@
 services:
   receipt_manager:
     build: .
+    secrets:
+      - receipt_manager_secret
     ports:
       - "8000:5000"
     # volumes:
       # - .:/receipt_manager
     # working_dir: /receipt_manager
+secrets:
+  receipt_manager_secret:
+    file: ./receipt_manager_secret.txt

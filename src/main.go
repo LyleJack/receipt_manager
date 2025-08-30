@@ -15,9 +15,9 @@ func main() {
 	http.HandleFunc("/hello", receiptUploadHandler)
 	http.HandleFunc("/test", testReceiptUploadHandler)
 
-	log.Printf("Server running on http://0.0.0.0:%v", port)
+	log.Printf("Server running on http://localhost:%v", port)
 
-	if err := http.ListenAndServe("0.0.0.0:"+port, nil); err != nil {
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatal(err)
 	}
 }
