@@ -1,11 +1,15 @@
 ## To Do:
-- Look into setting up OAuth properly and then incorperating that into the user.
-- Change DB from SQLite -> Postgres
-- Maybe an S3 AWS bucket for receipt images?
-- See if it is worthwhile making the AI response for receipt -> JSON into a Go routine - maybe the whole process,
- so that it can handle multiple receipts?
+- get docker working again, now that the demo works locally
+- See if it is worthwhile making the AI response for receipt -> JSON into a Go routine - maybe the whole process, so that it can handle multiple receipts?
     - however the OCR is quite fast.
 - Some form of check to ensure the receipt looks correct (check for certain fields at minimum - possibly another call to genai?)
+- Add a new page with the functionality to split items. Choice by %, or move items to different people. Additional option to split an item (e.g. glass of wine)
+- Option to edit incorrect items on receipt e.g. if bad OCR/ai translation
+
+## Long term scalability goals:
+- Look into setting up OAuth and then incorperating that into a user profile.
+- Change DB from SQLite -> Postgres
+- Potentially S3 AWS bucket for receipt images? Otherwise remove the saving image functionality.
 
 ## To Run:  
 > `docker-compose up --build`  

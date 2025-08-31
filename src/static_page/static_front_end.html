@@ -59,7 +59,7 @@
 
     function toggleSort() {
       currentSort = currentSort === 'date' ? 'category' : 'date';
-      document.getElementById('toggleSortBtn').textContent = currentSort === 'date' ? 'Sort by Date' : 'Group by Category';
+      document.getElementById('toggleSortBtn').textContent = currentSort === 'date' ? 'Group by Category':'Sort by Date';
       loadReceipts();
     }
 
