@@ -31,20 +31,30 @@ func Init() (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to create main table: %w", err)
 	}
 
+	err = createItemsTable(db)
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+
+}
+
+func createItemsTable(db *sql.DB) error {
 	createItemsTableSQL := `
 	CREATE TABLE IF NOT EXISTS receipt_items (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		total_price REAL NOT NULL,
-		name TEXT
-		quantity INTEGER
+		name TEXT,
+		quantity INTEGER,
 		receipt_id INTEGER REFERENCES receipts(id) ON DELETE CASCADE
 	);`
 
-	_, err = db.Exec(createItemsTableSQL)
+	_, err := db.Exec(createItemsTableSQL)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to create items table: %w", err)
+		return fmt.Errorf("failed to create items table: %w", err)
 	}
 
-	return db, nil
+	return nil
 }

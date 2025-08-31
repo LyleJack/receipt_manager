@@ -7,9 +7,9 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 min-h-screen">
-  <nav class="bg-blue-600 p-4 text-white flex justify-between">
-    <div class="font-bold">Receipt Manager</div>
-    <div>
+  <nav class="bg-blue-600 p-4 text-white flex justify-between items-center">
+    <div class="font-bold text-lg">Receipt Manager</div>
+    <div class="space-x-2">
       <button onclick="showPage('upload')" class="px-3 py-1 bg-blue-800 rounded">Upload</button>
       <button onclick="showPage('receipts')" class="px-3 py-1 bg-blue-800 rounded">Receipts</button>
     </div>
@@ -20,8 +20,8 @@
     <h2 class="text-xl font-semibold mb-4">Upload Receipt</h2>
     <form id="uploadForm" class="space-y-4">
       <input type="file" id="receiptInput" name="receipt" accept="image/*" class="block" required>
-      <img id="preview" class="max-w-xs hidden border rounded" />
-      <button type="submit" id="uploadBtn" class="bg-blue-600 text-white px-4 py-2 rounded flex items-center">
+      <img id="preview" class="max-w-xs hidden border rounded mt-2" />
+      <button type="submit" id="uploadBtn" class="bg-blue-600 text-white px-4 py-2 rounded flex items-center mt-2">
         <span id="uploadBtnText">Upload</span>
         <svg id="spinner" class="animate-spin ml-2 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -36,7 +36,10 @@
   <div id="receiptsPage" class="p-6 hidden">
     <div class="flex justify-between items-center mb-4">
       <h2 class="text-xl font-semibold">Receipts</h2>
-      <button onclick="toggleSort()" class="bg-blue-600 text-white px-3 py-1 rounded">Toggle Sort</button>
+      <div class="space-x-2">
+        <button onclick="loadReceipts()" class="bg-green-600 text-white px-3 py-1 rounded">Refresh</button>
+        <button onclick="toggleSort()" id="toggleSortBtn" class="bg-blue-600 text-white px-3 py-1 rounded">Sort by Date</button>
+      </div>
     </div>
     <div id="receiptsContainer" class="space-y-4"></div>
   </div>
@@ -54,23 +57,30 @@
       }
     }
 
-    document.getElementById('receiptInput').addEventListener('change', function (e) {
+    function toggleSort() {
+      currentSort = currentSort === 'date' ? 'category' : 'date';
+      document.getElementById('toggleSortBtn').textContent = currentSort === 'date' ? 'Sort by Date' : 'Group by Category';
+      loadReceipts();
+    }
+
+    // Upload
+    document.getElementById('receiptInput').addEventListener('change', e => {
       const file = e.target.files[0];
       if (file) {
         const reader = new FileReader();
-        reader.onload = function (ev) {
-          document.getElementById('preview').src = ev.target.result;
-          document.getElementById('preview').classList.remove('hidden');
-        }
+        reader.onload = ev => {
+          const preview = document.getElementById('preview');
+          preview.src = ev.target.result;
+          preview.classList.remove('hidden');
+        };
         reader.readAsDataURL(file);
       }
     });
 
-    document.getElementById('uploadForm').addEventListener('submit', async function (e) {
+    document.getElementById('uploadForm').addEventListener('submit', async e => {
       e.preventDefault();
       const fileInput = document.getElementById('receiptInput');
       if (!fileInput.files[0]) return;
-
       const formData = new FormData();
       formData.append('receipt', fileInput.files[0]);
 
@@ -82,13 +92,18 @@
       try {
         const res = await fetch('http://localhost:5000/receipts/upload', { method: 'POST', body: formData });
         const text = await res.text();
-        let data;
-        try { data = JSON.parse(text); } catch { throw new Error('Invalid JSON: ' + text); }
+        let data = JSON.parse(text);
         if (Array.isArray(data) && data.length > 0) data = data[0];
 
-        document.getElementById('uploadStatus').innerHTML = `<div class='p-2 bg-green-100 text-green-800 rounded'>Uploaded: ${data.store_name} - ${new Date(data.date).toLocaleDateString()}</div>`;
+        document.getElementById('uploadStatus').innerHTML = `
+          <div class='p-4 bg-green-100 text-green-800 rounded shadow'>
+            <div class='font-semibold'>${data.store_name}</div>
+            <div>Date: ${new Date(data.date).toLocaleDateString()}</div>
+            <div>Total: £${data.total.toFixed(2)}</div>
+          </div>
+        `;
       } catch (err) {
-        document.getElementById('uploadStatus').innerHTML = `<div class='p-2 bg-red-100 text-red-800 rounded'>Error: ${err.message}</div>`;
+        document.getElementById('uploadStatus').innerHTML = `<div class='p-4 bg-red-100 text-red-800 rounded shadow'>Error uploading file.</div>`;
       } finally {
         btn.disabled = false; btnText.textContent = 'Upload'; spinner.classList.add('hidden');
       }
@@ -99,14 +114,11 @@
       container.innerHTML = 'Loading...';
       try {
         const res = await fetch('http://localhost:5000/receipts/get');
-        const text = await res.text();
-        let data;
-        try { data = JSON.parse(text); } catch { throw new Error('Invalid JSON: ' + text); }
-        if (!Array.isArray(data)) throw new Error('Unexpected response');
-
+        let data = await res.json();
+        if (!Array.isArray(data)) data = [];
         renderReceipts(data);
-      } catch (err) {
-        container.innerHTML = `<div class='p-2 bg-red-100 text-red-800 rounded'>Error loading receipts: ${err.message}</div>`;
+      } catch {
+        container.innerHTML = `<div class='p-4 bg-red-100 text-red-800 rounded'>Error loading receipts.</div>`;
       }
     }
 
@@ -118,20 +130,24 @@
         receipts.sort((a, b) => new Date(b.date) - new Date(a.date));
         receipts.forEach(r => container.appendChild(makeReceiptCard(r)));
       } else {
-        const groups = {};
+        const grouped = {};
         receipts.forEach(r => {
           const cat = r.category || 'Uncategorized';
-          if (!groups[cat]) groups[cat] = [];
-          groups[cat].push(r);
+          if (!grouped[cat]) grouped[cat] = [];
+          grouped[cat].push(r);
         });
-        for (const [cat, list] of Object.entries(groups)) {
+        for (const cat in grouped) {
           const section = document.createElement('div');
-          section.innerHTML = `<h3 class='font-bold text-lg cursor-pointer bg-gray-200 p-2 rounded'>${cat}</h3>`;
+          section.className = 'category';
+          const header = document.createElement('h3');
+          header.textContent = cat;
+          header.className = 'font-bold text-lg cursor-pointer bg-gray-200 p-2 rounded';
           const groupDiv = document.createElement('div');
-          groupDiv.classList.add('ml-4','space-y-2','hidden');
-          list.forEach(r => groupDiv.appendChild(makeReceiptCard(r)));
+          groupDiv.className = 'ml-4 space-y-2';
+          grouped[cat].forEach(r => groupDiv.appendChild(makeReceiptCard(r)));
+          header.onclick = () => groupDiv.classList.toggle('hidden');
+          section.appendChild(header);
           section.appendChild(groupDiv);
-          section.querySelector('h3').onclick = () => groupDiv.classList.toggle('hidden');
           container.appendChild(section);
         }
       }
@@ -146,7 +162,6 @@
         <div class='text-sm text-gray-600'>${r.location || ''}</div>
         <div class='text-sm'>Date: ${date}</div>
         <div class='text-sm'>Total: £${r.total.toFixed(2)}</div>
-        ${r.tip ? `<div class='text-sm'>Tip: £${r.tip.toFixed(2)}</div>` : ''}
         <div class='text-sm'>Category: ${r.category || 'Uncategorized'}</div>
         <button onclick="toggleItems(${r.receipt_id}, this)" class='mt-2 text-blue-600 underline'>View Items</button>
         <div id='items-${r.receipt_id}' class='mt-2 hidden'></div>
@@ -156,29 +171,17 @@
 
     async function toggleItems(id, btn) {
       const div = document.getElementById(`items-${id}`);
-      if (!div.classList.contains('hidden')) {
-        div.classList.add('hidden');
-        btn.textContent = 'View Items';
-        return;
-      }
-      div.innerHTML = 'Loading items...';
+      if (!div.classList.contains('hidden')) { div.classList.add('hidden'); btn.textContent = 'View Items'; return; }
+      div.innerHTML = 'Loading items...'; div.classList.remove('hidden');
       try {
         const res = await fetch(`http://localhost:5000/receipts/get/items/${id}`);
-        const text = await res.text();
-        let data;
-        try { data = JSON.parse(text); } catch { throw new Error('Invalid JSON: ' + text); }
-        if (!Array.isArray(data)) throw new Error('Unexpected response');
+        let data = await res.json();
+        if (!Array.isArray(data)) data = [];
         div.innerHTML = `<ul class='list-disc ml-5'>${data.map(i => `<li>${i.quantity||1} × ${i.name} — £${i.total_price.toFixed(2)}</li>`).join('')}</ul>`;
-      } catch (err) {
-        div.innerHTML = `<div class='p-2 bg-red-100 text-red-800 rounded'>Error loading items: ${err.message}</div>`;
+      } catch {
+        div.innerHTML = `<div class='p-2 bg-red-100 text-red-800 rounded'>Error loading items.</div>`;
       }
-      div.classList.remove('hidden');
       btn.textContent = 'Hide Items';
-    }
-
-    function toggleSort() {
-      currentSort = currentSort === 'date' ? 'category' : 'date';
-      loadReceipts();
     }
   </script>
 </body>
