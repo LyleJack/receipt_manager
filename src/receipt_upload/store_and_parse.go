@@ -8,6 +8,7 @@ import (
 	"log"
 	"mime/multipart"
 	"os"
+	"strings"
 	"time"
 
 	gosseract "github.com/otiai10/gosseract/v2"
@@ -25,6 +26,7 @@ type Receipt struct {
 	Items     []Item    `json:"items"`
 	Total     float64   `json:"total"`
 	Tip       float64   `json:"tip,omitempty"`
+	Category  string    `json:"category,omitempty"`
 }
 
 type Item struct {
@@ -36,7 +38,8 @@ type Item struct {
 func ShouldSaveFile(file multipart.File, handler *multipart.FileHeader) error {
 	const funcName = "ShouldSaveFile"
 	// Create a new file on disk
-	dst, err := os.Create("./uploads/" + handler.Filename)
+	fileData := strings.Split(handler.Filename, ".")
+	dst, err := os.Create("./uploads/" + fileData[0] + fmt.Sprintf("_%d", time.Now().Unix()) + "." + fileData[1])
 	if err != nil {
 		return fmt.Errorf("[%s].[%s] error: could not create file", packageName, funcName)
 	}
@@ -53,7 +56,7 @@ func ShouldSaveFile(file multipart.File, handler *multipart.FileHeader) error {
 	return nil
 }
 
-func ParseReceipt(filePath string) (string, error) {
+func ParseReceipt(filePath string) ([]byte, error) {
 	client := gosseract.NewClient()
 	defer client.Close()
 
@@ -61,7 +64,7 @@ func ParseReceipt(filePath string) (string, error) {
 
 	receiptText, err := client.Text()
 	if err != nil {
-		return "", fmt.Errorf("failed to extract text: %v", err)
+		return []byte{}, fmt.Errorf("failed to extract text: %v", err)
 	}
 
 	fmt.Println("image text here:", receiptText)
@@ -69,24 +72,24 @@ func ParseReceipt(filePath string) (string, error) {
 	ctx := context.Background()
 	aiClient, err := genai.NewClient(ctx, nil)
 	if err != nil {
-		log.Fatalf("Failed to create genai client: %v", err)
+		return []byte{}, fmt.Errorf("failed to create genai client: %v", err)
 	}
 
 	// change this to run as a goroutine at a later point
 
-	receipt, err := extractReceipt(ctx, aiClient, receiptText)
+	receipt, receiptJSON, err := extractReceipt(ctx, aiClient, receiptText)
 	if err != nil {
-		log.Fatalf("Failed to extract receipt: %v", err)
+		return []byte{}, fmt.Errorf("failed to extract receipt: %v", err)
 	}
 
-	_ = receipt
+	log.Printf("Receipt JSON: %v", receipt)
 
 	// save receipt json in database here
 
-	return "", nil
+	return receiptJSON, nil
 }
 
-func extractReceipt(ctx context.Context, client *genai.Client, ocrText string) (Receipt, error) {
+func extractReceipt(ctx context.Context, client *genai.Client, ocrText string) (Receipt, []byte, error) {
 	// Define the JSON schema for the desired output.
 	// This is where you specify the exact structure you want.
 
@@ -97,13 +100,20 @@ func extractReceipt(ctx context.Context, client *genai.Client, ocrText string) (
 				Type:        genai.TypeString,
 				Description: "The name of the store.",
 			},
+			"category": {
+				Type:        genai.TypeString,
+				Description: "The category of the receipt represented as an integer. To be guessed at by store name and items purchased.",
+				Format:      "enum",
+				Enum:        []string{"groceries", "restaurants", "entertainment", "utilities", "transportation", "healthcare", "shopping", "other"},
+			},
 			"date": {
 				Type:        genai.TypeString,
-				Description: "The transaction date turned into a suitable time.Time golang type format",
+				Description: "The transaction date turned into a suitable time.Time golang type format (2006-01-02T15:04:05Z07:00)",
 			},
 			"total": {
 				Type:        genai.TypeNumber,
 				Description: "The total amount of the receipt.",
+				Format:      "float",
 			},
 			"items": {
 				Type:        genai.TypeArray,
@@ -118,10 +128,12 @@ func extractReceipt(ctx context.Context, client *genai.Client, ocrText string) (
 						"total_price": {
 							Type:        genai.TypeNumber,
 							Description: "The price of the items.",
+							Format:      "float",
 						},
 						"quantity": {
 							Type:        genai.TypeInteger,
 							Description: "The quantity of the item purchased.",
+							Format:      "int32",
 						},
 					},
 				},
@@ -142,30 +154,29 @@ func extractReceipt(ctx context.Context, client *genai.Client, ocrText string) (
 			Role: "user",
 			Parts: []*genai.Part{
 				{
-					Text: (fmt.Sprintf(`Convert the following receipt text to a JSON object:
-					%s`, ocrText)),
+					Text: fmt.Sprintf(`Convert the following receipt text to a JSON object:
+					%s`, ocrText),
 				},
 			},
 		},
 	}, config)
 	if err != nil {
-		return Receipt{}, fmt.Errorf("generate content error: %w", err)
+		return Receipt{}, []byte{}, fmt.Errorf("generate content error: %w", err)
 	}
 
-	textVal := resp.Text()
-	log.Printf("Full response text: %s", textVal)
+	receiptJSON := []byte(resp.Text())
 
 	// Unmarshal the raw JSON into our Go struct.
 	var receipt []Receipt
-	if err := json.Unmarshal([]byte(textVal), &receipt); err != nil {
-		return Receipt{}, fmt.Errorf("JSON unmarshal error: %w", err)
+	if err := json.Unmarshal(receiptJSON, &receipt); err != nil {
+		return Receipt{}, []byte{}, fmt.Errorf("JSON unmarshal error: %w", err)
 	}
 
 	if len(receipt) == 0 {
-		return Receipt{}, fmt.Errorf("no receipt data found in response")
+		return Receipt{}, []byte{}, fmt.Errorf("no receipt data found in response")
 	}
 	if len(receipt) > 1 {
 		log.Printf("Warning: multiple receipt objects found, using the first one")
 	}
-	return receipt[0], nil
+	return receipt[0], receiptJSON, nil
 }
