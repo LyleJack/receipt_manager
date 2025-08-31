@@ -3,6 +3,7 @@ module receipt_manager
 go 1.23.6
 
 require (
+	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/otiai10/gosseract/v2 v2.4.1
 	golang.org/x/oauth2 v0.30.0
 	google.golang.org/api v0.248.0

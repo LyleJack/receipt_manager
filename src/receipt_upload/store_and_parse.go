@@ -20,6 +20,7 @@ const (
 )
 
 type Receipt struct {
+	ID        int       `json:"receipt_id,omitempty"`
 	StoreName string    `json:"store_name"`
 	Location  string    `json:"location,omitempty"`
 	Date      time.Time `json:"date"`
@@ -30,33 +31,34 @@ type Receipt struct {
 }
 
 type Item struct {
-	Quanity    int     `json:"quantity,omitempty"`
+	Quantity   int     `json:"quantity,omitempty"`
 	Name       string  `json:"name"`
 	TotalPrice float64 `json:"total_price"`
 }
 
-func ShouldSaveFile(file multipart.File, handler *multipart.FileHeader) error {
+func ShouldSaveFile(file multipart.File, handler *multipart.FileHeader) (string, error) {
 	const funcName = "ShouldSaveFile"
 	// Create a new file on disk
 	fileData := strings.Split(handler.Filename, ".")
-	dst, err := os.Create("./uploads/" + fileData[0] + fmt.Sprintf("_%d", time.Now().Unix()) + "." + fileData[1])
+	filePath := "./uploads/" + fileData[0] + fmt.Sprintf("_%d", time.Now().Unix()) + "." + fileData[1]
+	dst, err := os.Create(filePath)
 	if err != nil {
-		return fmt.Errorf("[%s].[%s] error: could not create file", packageName, funcName)
+		return "", fmt.Errorf("[%s].[%s] error: could not create file", packageName, funcName)
 	}
 	defer dst.Close()
 
 	// Copy uploaded file to destination
 	_, err = io.Copy(dst, file)
 	if err != nil {
-		return fmt.Errorf("[%s].[%s] error: could not save file", packageName, funcName)
+		return "", fmt.Errorf("[%s].[%s] error: could not save file", packageName, funcName)
 	}
 
 	log.Printf("File %s uploaded successfully\n", handler.Filename)
 
-	return nil
+	return filePath, nil
 }
 
-func ParseReceipt(filePath string) ([]byte, error) {
+func ParseReceipt(filePath string) ([]byte, Receipt, error) {
 	client := gosseract.NewClient()
 	defer client.Close()
 
@@ -64,29 +66,29 @@ func ParseReceipt(filePath string) ([]byte, error) {
 
 	receiptText, err := client.Text()
 	if err != nil {
-		return []byte{}, fmt.Errorf("failed to extract text: %v", err)
+		return []byte{}, Receipt{}, fmt.Errorf("failed to extract text: %v", err)
 	}
 
-	fmt.Println("image text here:", receiptText)
+	log.Println("image text here:", receiptText)
 
 	ctx := context.Background()
 	aiClient, err := genai.NewClient(ctx, nil)
 	if err != nil {
-		return []byte{}, fmt.Errorf("failed to create genai client: %v", err)
+		return []byte{}, Receipt{}, fmt.Errorf("failed to create genai client: %v", err)
 	}
 
 	// change this to run as a goroutine at a later point
 
 	receipt, receiptJSON, err := extractReceipt(ctx, aiClient, receiptText)
 	if err != nil {
-		return []byte{}, fmt.Errorf("failed to extract receipt: %v", err)
+		return []byte{}, Receipt{}, fmt.Errorf("failed to extract receipt: %v", err)
 	}
 
 	log.Printf("Receipt JSON: %v", receipt)
 
 	// save receipt json in database here
 
-	return receiptJSON, nil
+	return receiptJSON, receipt, nil
 }
 
 func extractReceipt(ctx context.Context, client *genai.Client, ocrText string) (Receipt, []byte, error) {

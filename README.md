@@ -1,6 +1,6 @@
 ## To Do:
 - Look into setting up OAuth properly and then incorperating that into the user.
-- Store JSON in database
+- Change DB from SQLite -> Postgres
 - Maybe an S3 AWS bucket for receipt images?
 - See if it is worthwhile making the AI response for receipt -> JSON into a Go routine - maybe the whole process,
  so that it can handle multiple receipts?
